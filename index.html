@@ -2,150 +2,277 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <link rel="icon" href="data:;base64,iVBORw0KGgo="><!-- disable favicon request -->
-    <title>ffmpeg.wasm barebones demo</title>
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <title>xsukax WebM to MP4 Converter</title>
     <script src="ffmpegWasmBarebones.js"></script>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .container {
+        background: white;
+        padding: 30px;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      }
+      h1 {
+        color: #333;
+        margin-top: 0;
+      }
+      .upload-area {
+        border: 2px dashed #ccc;
+        border-radius: 8px;
+        padding: 40px;
+        text-align: center;
+        margin: 20px 0;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+      .upload-area:hover {
+        border-color: #4CAF50;
+        background: #f9f9f9;
+      }
+      .upload-area.active {
+        border-color: #4CAF50;
+        background: #e8f5e9;
+      }
+      input[type="file"] {
+        display: none;
+      }
+      button {
+        background: #4CAF50;
+        color: white;
+        border: none;
+        padding: 12px 30px;
+        font-size: 16px;
+        border-radius: 5px;
+        cursor: pointer;
+        width: 100%;
+        margin-top: 20px;
+      }
+      button:hover {
+        background: #45a049;
+      }
+      button:disabled {
+        background: #ccc;
+        cursor: not-allowed;
+      }
+      .status {
+        margin-top: 20px;
+        padding: 15px;
+        border-radius: 5px;
+        display: none;
+      }
+      .status.info {
+        background: #e3f2fd;
+        color: #1976d2;
+        display: block;
+      }
+      .status.success {
+        background: #e8f5e9;
+        color: #2e7d32;
+        display: block;
+      }
+      .status.error {
+        background: #ffebee;
+        color: #c62828;
+        display: block;
+      }
+      .result {
+        margin-top: 20px;
+        display: none;
+      }
+      .result.show {
+        display: block;
+      }
+      video {
+        width: 100%;
+        max-width: 640px;
+        margin: 20px 0;
+        border-radius: 5px;
+      }
+      .download-btn {
+        background: #2196F3;
+        display: inline-block;
+        text-decoration: none;
+        color: white;
+        padding: 12px 30px;
+        border-radius: 5px;
+        margin-top: 10px;
+      }
+      .download-btn:hover {
+        background: #1976d2;
+      }
+      .file-info {
+        margin: 10px 0;
+        color: #666;
+      }
+    </style>
   </head>
   <body>
-    <h3>ffmpeg.wasm barebones demo</h3>
-    <p>
-        This is a demo for
-        <a href="https://github.com/diafygi/ffmpeg-wasm-barebones">https://github.com/diafygi/ffmpeg-wasm-barebones</a>
-    </p>
-    <form>
-        Command:<br>
-        <textarea id="args" style="width:40em;height:10em;">["-i", "%INPUTFILE%", "%OUTPUTFILE%"]</textarea><br><br>
-        Input file: <input id="infile" type="file">
-        (<a href="Big_Buck_Bunny_180_10s.webm" id="load-example-vid">load example webm</a>)<br><br>
-        Output file: <input id="outfile" value="output.gif"> <input id="outtype" value="image/gif"><br><br>
-        <input type="submit" value="Submit">
-    </form>
-    <div style="margin-top:1em;">
-        Result: <span id="progress"></span> | <span id="log"></span><br>
-        <hr>
-        <div id="result-download"></div>
-        <hr>
-        <div id="result-embed"></div>
-        <hr>
+    <div class="container">
+      <h1>🎬 xsukax WebM to MP4 Converter</h1>
+      <p>Convert your WebM videos to MP4 format directly in your browser. No upload required - everything happens locally!</p>
+      
+      <div class="upload-area" id="uploadArea">
+        <input type="file" id="fileInput" accept=".webm,video/webm">
+        <div>
+          <h3>📁 Drop WebM file here or click to browse</h3>
+          <p>Your file will be processed locally in your browser</p>
+        </div>
+      </div>
+      
+      <div class="file-info" id="fileInfo"></div>
+      
+      <button id="convertBtn" disabled>Convert to MP4</button>
+      
+      <div class="status" id="status"></div>
+      
+      <div class="result" id="result">
+        <h3>✅ Conversion Complete!</h3>
+        <video id="preview" controls></video>
+        <br>
+        <a class="download-btn" id="downloadLink" download="output.mp4">⬇️ Download MP4</a>
+      </div>
     </div>
+
     <script>
-        // downloaded from https://unpkg.com/browse/@ffmpeg/core@0.12.6/dist/umd/
-        const FFMPEG_CORE_URL = document.location.origin + document.location.pathname + "./ffmpeg-core/ffmpeg-core.js";
-        const FFMPEG_WASM_URL = document.location.origin + document.location.pathname + "./ffmpeg-core/ffmpeg-core.wasm";
+      const FFMPEG_CORE_URL = document.location.origin + document.location.pathname + "./ffmpeg-core/ffmpeg-core.js";
+      const FFMPEG_WASM_URL = document.location.origin + document.location.pathname + "./ffmpeg-core/ffmpeg-core.wasm";
 
-        // trigger ffmpeg to process some inputs
-        let ffmpegCoreAPI = undefined;
-        document.querySelector('form').addEventListener('submit', async (e) => {
-            e.preventDefault();
+      const uploadArea = document.getElementById('uploadArea');
+      const fileInput = document.getElementById('fileInput');
+      const convertBtn = document.getElementById('convertBtn');
+      const status = document.getElementById('status');
+      const result = document.getElementById('result');
+      const fileInfo = document.getElementById('fileInfo');
+      const preview = document.getElementById('preview');
+      const downloadLink = document.getElementById('downloadLink');
 
-            // reset results
-            document.querySelector("#result-download").innerHTML = "";
-            document.querySelector("#result-embed").innerHTML = "";
-            document.querySelector("#progress").innerHTML = "";
-            document.querySelector("#log").innerHTML = "";
+      let selectedFile = null;
+      let ffmpegCoreAPI = null;
 
-            // read inputs
-            const inFile = exampleVidFile || document.querySelector('#infile').files[0];
-            if (!inFile) {
-                document.querySelector("#progress").innerHTML = "<span style='color:red;'>Need to select an input file</span>";
-                return;
-            }
-            const inFileName = inFile.name;
-            const inFileArr = await (new Promise((rslv) => {
-                const r = new FileReader();
-                r.onload = () => rslv(new Uint8Array(r.result));
-                r.readAsArrayBuffer(inFile);
-            }));
-            const outFileName =  document.querySelector('#outfile').value;
-            const outFileType =  document.querySelector('#outtype').value;
+      // Upload area interactions
+      uploadArea.addEventListener('click', () => fileInput.click());
+      
+      uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('active');
+      });
+      
+      uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('active');
+      });
+      
+      uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('active');
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type === 'video/webm') {
+          fileInput.files = files;
+          handleFileSelect(files[0]);
+        }
+      });
 
-            // convert ffmpeg command into full arguments
-            let execArgs = document.querySelector('#args').value;
-            execArgs = execArgs.replace("%INPUTFILE%", inFileName);
-            execArgs = execArgs.replace("%OUTPUTFILE%", outFileName);
-            execArgs = JSON.parse(execArgs);
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFileSelect(e.target.files[0]);
+        }
+      });
 
-            // load ffmpeg
-            if (!ffmpegCoreAPI) {
-                document.querySelector("#progress").textContent = "Loading ffmpeg...";
-                ffmpegCoreAPI = await loadFFmpegCoreAPI({
-                    coreURL: FFMPEG_CORE_URL,
-                    wasmURL: FFMPEG_WASM_URL,
-                    onLog: (l) => {
-                        console.log("log", l);
-                        document.querySelector("#log").textContent = `[${l.type}]: ${l.message}`;
-                    },
-                    onProgress: (p) => {
-                        console.log("progress", p);
-                        document.querySelector("#progress").textContent = `progress=${p.progress}, time=${p.time}`;
-                    },
-                });
-                document.querySelector("#progress").textContent = "Loaded ffmpeg!";
-            }
+      function handleFileSelect(file) {
+        selectedFile = file;
+        fileInfo.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+        convertBtn.disabled = false;
+        result.classList.remove('show');
+      }
 
-            // write the file to the "file system" (the wasm's virtual file system)
-            await ffmpegCoreAPI("FS.writeFile", [inFileName, inFileArr], [inFileArr.buffer]);
+      convertBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
 
-            // debug dump of the virtual file system
-            const dirContents = await ffmpegCoreAPI("FS.readdir", ["/"]);
-            console.log("FS.readdir: ", dirContents);
-            for (const dirItem of dirContents) {
-                const itemStat = await ffmpegCoreAPI("FS.stat", ["/" + dirItem]);
-                const isDir = await ffmpegCoreAPI("FS.isDir", [itemStat.mode]);
-                console.log("FS.readdir: ", dirItem, itemStat, isDir);
-            }
+        convertBtn.disabled = true;
+        result.classList.remove('show');
+        showStatus('info', 'Starting conversion...');
 
-            // set ffmpeg's timeout to be unlimited
-            await ffmpegCoreAPI("setTimeout", [-1]);
+        try {
+          // Read file as array buffer
+          const fileArray = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(new Uint8Array(reader.result));
+            reader.readAsArrayBuffer(selectedFile);
+          });
 
-            // run the ffmpeg command
-            await ffmpegCoreAPI("exec", execArgs);
-            const execReturnCode = await ffmpegCoreAPI("ret");
-            document.querySelector("#log").textContent = `Final ffmpeg return code: ${execReturnCode} (0 means success)`;
+          // Load ffmpeg if not already loaded
+          if (!ffmpegCoreAPI) {
+            showStatus('info', 'Loading FFmpeg (first time only)...');
+            ffmpegCoreAPI = await loadFFmpegCoreAPI({
+              coreURL: FFMPEG_CORE_URL,
+              wasmURL: FFMPEG_WASM_URL,
+              onLog: (l) => {
+                console.log(`[${l.type}]: ${l.message}`);
+              },
+              onProgress: (p) => {
+                showStatus('info', `Converting... ${Math.round(p.progress * 100)}%`);
+              },
+            });
+          }
 
-            // tell the ffmpeg wasm to reset
-            await ffmpegCoreAPI("reset");
+          showStatus('info', 'Writing input file...');
+          await ffmpegCoreAPI("FS.writeFile", ["input.webm", fileArray], [fileArray.buffer]);
 
-            // read the output file from the "file system" (the wasm's virtual file system)
-            const data = await ffmpegCoreAPI("FS.readFile", [outFileName, { encoding: "binary" }]);
+          showStatus('info', 'Converting to MP4...');
+          await ffmpegCoreAPI("setTimeout", [-1]);
+          
+          // Convert webm to mp4 with good quality settings
+          await ffmpegCoreAPI("exec", [
+            "-i", "input.webm",
+            "-c:v", "libx264",
+            "-preset", "medium",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "output.mp4"
+          ]);
 
-            // delete the file to clear up memory since it's no longer needed
-            await ffmpegCoreAPI("FS.unlink", [outFileName]);
+          const returnCode = await ffmpegCoreAPI("ret");
+          
+          if (returnCode !== 0) {
+            throw new Error(`FFmpeg failed with return code: ${returnCode}`);
+          }
 
-            // create a blob url for embedding on the page
-            const dataUrl = URL.createObjectURL(new Blob([data.buffer], { type: outFileType }));
+          showStatus('info', 'Reading output file...');
+          const outputData = await ffmpegCoreAPI("FS.readFile", ["output.mp4", { encoding: "binary" }]);
 
-            // create a download link for the blob url
-            const dl = document.createElement("a");
-            dl.href = dataUrl;
-            dl.textContent = "[download]";
-            dl.download = outFileName;
-            document.querySelector("#result-download").appendChild(dl);
+          // Clean up
+          await ffmpegCoreAPI("reset");
 
-            // embed the result in the page so users can view it
-            if (outFileType === "image/gif") {
-                const img = document.createElement("img");
-                img.src = dataUrl;
-                document.querySelector("#result-embed").appendChild(img);
-            }
-            else {
-                const vid = document.createElement("video");
-                vid.src = dataUrl;
-                vid.setAttribute("controls", null);
-                document.querySelector("#result-embed").appendChild(vid);
-            }
-        });
+          // Create blob and preview
+          const blob = new Blob([outputData.buffer], { type: 'video/mp4' });
+          const url = URL.createObjectURL(blob);
 
-        // don't require the user to provide a video file
-        let exampleVidFile = undefined;
-        document.querySelector('#load-example-vid').addEventListener('click', async (e) => {
-            e.preventDefault();
-            const sampleVid = "Big_Buck_Bunny_180_10s.webm"
-            document.querySelector('#load-example-vid').textContent = `loading ${sampleVid}...`;
-            const fileBlob = await (await fetch(sampleVid)).blob();
-            exampleVidFile = new File([fileBlob], sampleVid);
-            document.querySelector('#load-example-vid').textContent = `loaded ${sampleVid}!`;
-        }, { once: true });
+          preview.src = url;
+          downloadLink.href = url;
+          downloadLink.download = selectedFile.name.replace('.webm', '.mp4');
+
+          result.classList.add('show');
+          showStatus('success', '✅ Conversion successful!');
+          convertBtn.disabled = false;
+
+        } catch (error) {
+          console.error('Conversion error:', error);
+          showStatus('error', `❌ Error: ${error.message}`);
+          convertBtn.disabled = false;
+        }
+      });
+
+      function showStatus(type, message) {
+        status.className = `status ${type}`;
+        status.textContent = message;
+      }
     </script>
   </body>
 </html>
