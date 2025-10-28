@@ -3,7 +3,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![GitHub](https://img.shields.io/badge/GitHub-xsukax-181717?logo=github)](https://github.com/xsukax/xsukax-MP4-Converter)
 
-A powerful, privacy-focused, browser-based video converter that transforms any video format into high-quality MP4 files—completely client-side, with no server uploads required.
+A powerful, privacy-focused, browser-based video converter that transforms any video format into high-quality MP4 files - completely client-side, with no server uploads required.
 
 ## 🎯 Project Overview
 
