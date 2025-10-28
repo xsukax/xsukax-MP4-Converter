@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    <title>xsukax WebM to MP4 Converter</title>
+    <title>xsukax MP4 Converter</title>
     <script src="ffmpegWasmBarebones.js"></script>
     <style>
       body {
@@ -115,14 +115,14 @@
   </head>
   <body>
     <div class="container">
-      <h1>🎬 xsukax WebM to MP4 Converter</h1>
-      <p>Convert your WebM videos to MP4 format directly in your browser. No upload required - everything happens locally!</p>
+      <h1>🎬 xsukax MP4 Converter</h1>
+      <p>Convert any video format to MP4 directly in your browser. No upload required - everything happens locally!</p>
       
       <div class="upload-area" id="uploadArea">
-        <input type="file" id="fileInput" accept=".webm,video/webm">
+        <input type="file" id="fileInput" accept="video/*">
         <div>
-          <h3>📁 Drop WebM file here or click to browse</h3>
-          <p>Your file will be processed locally in your browser</p>
+          <h3>📁 Drop video file here or click to browse</h3>
+          <p>Supports WebM, AVI, MKV, MOV, FLV, and more</p>
         </div>
       </div>
       
@@ -172,7 +172,7 @@
         e.preventDefault();
         uploadArea.classList.remove('active');
         const files = e.dataTransfer.files;
-        if (files.length > 0 && files[0].type === 'video/webm') {
+        if (files.length > 0 && files[0].type.startsWith('video/')) {
           fileInput.files = files;
           handleFileSelect(files[0]);
         }
@@ -221,15 +221,19 @@
             });
           }
 
+          // Get file extension
+          const inputExt = selectedFile.name.split('.').pop() || 'video';
+          const inputFileName = `input.${inputExt}`;
+
           showStatus('info', 'Writing input file...');
-          await ffmpegCoreAPI("FS.writeFile", ["input.webm", fileArray], [fileArray.buffer]);
+          await ffmpegCoreAPI("FS.writeFile", [inputFileName, fileArray], [fileArray.buffer]);
 
           showStatus('info', 'Converting to MP4...');
           await ffmpegCoreAPI("setTimeout", [-1]);
           
-          // Convert webm to mp4 with good quality settings
+          // Convert any video to mp4 with good quality settings
           await ffmpegCoreAPI("exec", [
-            "-i", "input.webm",
+            "-i", inputFileName,
             "-c:v", "libx264",
             "-preset", "medium",
             "-crf", "23",
@@ -256,7 +260,7 @@
 
           preview.src = url;
           downloadLink.href = url;
-          downloadLink.download = selectedFile.name.replace('.webm', '.mp4');
+          downloadLink.download = selectedFile.name.replace(/\.[^.]+$/, '.mp4');
 
           result.classList.add('show');
           showStatus('success', '✅ Conversion successful!');
