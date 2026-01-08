@@ -36,6 +36,13 @@
       audio { width: 100%; margin: 15px 0; }
       .download-btn { background: #4CAF50; display: inline-block; text-decoration: none; color: white; padding: 12px 30px; border-radius: 5px; margin-top: 10px; transition: background 0.3s; }
       .download-btn:hover { background: #45a049; }
+      .progress-container { margin: 20px 0; display: none; }
+      .progress-container.show { display: block; }
+      .progress-label { color: #555; font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+      .progress-bar { width: 100%; height: 8px; background: #e0e0e0; border-radius: 10px; overflow: hidden; position: relative; }
+      .progress-fill { height: 100%; background: linear-gradient(90deg, #2196F3, #1976d2); border-radius: 10px; transition: width 0.3s ease; width: 0%; position: relative; }
+      .progress-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shimmer 1.5s infinite; }
+      @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
       .notification { position: fixed; top: 20px; right: 20px; padding: 15px 20px; border-radius: 5px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; max-width: 350px; animation: slideIn 0.3s ease-out; }
       .notification.success { background: #4CAF50; color: white; }
       .notification.error { background: #f44336; color: white; }
@@ -89,6 +96,16 @@
       
       <button id="convertBtn" disabled>Convert Audio</button>
       
+      <div class="progress-container" id="progressContainer">
+        <div class="progress-label">
+          <span id="progressText">Converting...</span>
+          <span id="progressPercent">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+      </div>
+      
       <div class="result" id="result">
         <h3>✅ Conversion Complete!</h3>
         <audio id="preview" controls></audio>
@@ -111,6 +128,10 @@
       const formatSelect = document.getElementById('formatSelect');
       const bitrateGroup = document.getElementById('bitrateGroup');
       const bitrateSelect = document.getElementById('bitrateSelect');
+      const progressContainer = document.getElementById('progressContainer');
+      const progressFill = document.getElementById('progressFill');
+      const progressText = document.getElementById('progressText');
+      const progressPercent = document.getElementById('progressPercent');
 
       let selectedFile = null;
       let ffmpegCoreAPI = null;
@@ -182,7 +203,8 @@
 
         convertBtn.disabled = true;
         result.classList.remove('show');
-        showNotification('info', 'Starting conversion...');
+        progressContainer.classList.add('show');
+        updateProgress(0, 'Preparing...');
 
         try {
           const fileArray = await new Promise((resolve) => {
@@ -192,7 +214,7 @@
           });
 
           if (!ffmpegCoreAPI) {
-            showNotification('info', 'Loading FFmpeg (first time only)...');
+            updateProgress(5, 'Loading FFmpeg (first time only)...');
             ffmpegCoreAPI = await loadFFmpegCoreAPI({
               coreURL: FFMPEG_CORE_URL,
               wasmURL: FFMPEG_WASM_URL,
@@ -200,8 +222,8 @@
                 console.log(`[${l.type}]: ${l.message}`);
               },
               onProgress: (p) => {
-                const percent = Math.round(p.progress * 100);
-                showNotification('info', `Converting... ${percent}%`);
+                const percent = Math.min(95, Math.round(p.progress * 100));
+                updateProgress(percent, 'Converting audio...');
               },
             });
           }
@@ -212,7 +234,10 @@
           const outputFileName = `output.${targetFormat}`;
           const config = formatConfig[targetFormat];
 
+          updateProgress(10, 'Writing input file...');
           await ffmpegCoreAPI("FS.writeFile", [inputFileName, fileArray], [fileArray.buffer]);
+          
+          updateProgress(15, 'Starting conversion...');
           await ffmpegCoreAPI("setTimeout", [-1]);
 
           const ffmpegArgs = ["-i", inputFileName, "-c:a", config.codec];
@@ -235,7 +260,10 @@
             throw new Error(`FFmpeg failed with return code: ${returnCode}`);
           }
 
+          updateProgress(95, 'Reading output file...');
           const outputData = await ffmpegCoreAPI("FS.readFile", [outputFileName, { encoding: "binary" }]);
+          
+          updateProgress(98, 'Cleaning up...');
           await ffmpegCoreAPI("reset");
 
           const blob = new Blob([outputData.buffer], { type: config.mimeType });
@@ -245,16 +273,27 @@
           downloadLink.href = url;
           downloadLink.download = selectedFile.name.replace(/\.[^.]+$/, `.${targetFormat}`);
 
-          result.classList.add('show');
-          showNotification('success', '✅ Conversion successful!');
+          updateProgress(100, 'Complete!');
+          setTimeout(() => {
+            result.classList.add('show');
+            progressContainer.classList.remove('show');
+            showNotification('success', '✅ Conversion successful!');
+          }, 500);
           convertBtn.disabled = false;
 
         } catch (error) {
           console.error('Conversion error:', error);
+          progressContainer.classList.remove('show');
           showNotification('error', `❌ Error: ${error.message}`);
           convertBtn.disabled = false;
         }
       });
+
+      function updateProgress(percent, message) {
+        progressFill.style.width = `${percent}%`;
+        progressPercent.textContent = `${percent}%`;
+        progressText.textContent = message;
+      }
 
       function showNotification(type, message) {
         const existingNotifications = document.querySelectorAll('.notification');
