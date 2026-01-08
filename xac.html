@@ -30,12 +30,6 @@
       button { background: #2196F3; color: white; border: none; padding: 12px 30px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 10px; transition: background 0.3s; }
       button:hover { background: #1976d2; }
       button:disabled { background: #ccc; cursor: not-allowed; }
-      .result { margin-top: 20px; display: none; }
-      .result.show { display: block; }
-      .result h3 { color: #2e7d32; margin-bottom: 15px; font-size: 18px; }
-      audio { width: 100%; margin: 15px 0; }
-      .download-btn { background: #4CAF50; display: inline-block; text-decoration: none; color: white; padding: 12px 30px; border-radius: 5px; margin-top: 10px; transition: background 0.3s; }
-      .download-btn:hover { background: #45a049; }
       .progress-container { margin: 20px 0; display: none; }
       .progress-container.show { display: block; }
       .progress-label { color: #555; font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
@@ -43,6 +37,12 @@
       .progress-fill { height: 100%; background: linear-gradient(90deg, #2196F3, #1976d2); border-radius: 10px; transition: width 0.3s ease; width: 0%; position: relative; }
       .progress-fill::after { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent); animation: shimmer 1.5s infinite; }
       @keyframes shimmer { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+      .result { margin-top: 20px; display: none; }
+      .result.show { display: block; }
+      .result h3 { color: #2e7d32; margin-bottom: 15px; font-size: 18px; }
+      audio { width: 100%; margin: 15px 0; }
+      .download-btn { background: #4CAF50; display: inline-block; text-decoration: none; color: white; padding: 12px 30px; border-radius: 5px; margin-top: 10px; transition: background 0.3s; }
+      .download-btn:hover { background: #45a049; }
       .notification { position: fixed; top: 20px; right: 20px; padding: 15px 20px; border-radius: 5px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; max-width: 350px; animation: slideIn 0.3s ease-out; }
       .notification.success { background: #4CAF50; color: white; }
       .notification.error { background: #f44336; color: white; }
@@ -135,6 +135,7 @@
 
       let selectedFile = null;
       let ffmpegCoreAPI = null;
+      let isConverting = false;
 
       const formatConfig = {
         mp3: { codec: 'libmp3lame', supportsBitrate: true, mimeType: 'audio/mpeg' },
@@ -199,8 +200,9 @@
       }
 
       convertBtn.addEventListener('click', async () => {
-        if (!selectedFile) return;
+        if (!selectedFile || isConverting) return;
 
+        isConverting = true;
         convertBtn.disabled = true;
         result.classList.remove('show');
         progressContainer.classList.add('show');
@@ -215,6 +217,7 @@
 
           if (!ffmpegCoreAPI) {
             updateProgress(5, 'Loading FFmpeg (first time only)...');
+            let lastProgress = 5;
             ffmpegCoreAPI = await loadFFmpegCoreAPI({
               coreURL: FFMPEG_CORE_URL,
               wasmURL: FFMPEG_WASM_URL,
@@ -222,8 +225,11 @@
                 console.log(`[${l.type}]: ${l.message}`);
               },
               onProgress: (p) => {
-                const percent = Math.min(95, Math.round(p.progress * 100));
-                updateProgress(percent, 'Converting audio...');
+                if (p && p.progress !== undefined) {
+                  const percent = Math.min(95, Math.max(lastProgress, Math.round(20 + p.progress * 75)));
+                  lastProgress = percent;
+                  updateProgress(percent, 'Converting audio...');
+                }
               },
             });
           }
@@ -238,8 +244,7 @@
           await ffmpegCoreAPI("FS.writeFile", [inputFileName, fileArray], [fileArray.buffer]);
           
           updateProgress(15, 'Starting conversion...');
-          await ffmpegCoreAPI("setTimeout", [-1]);
-
+          
           const ffmpegArgs = ["-i", inputFileName, "-c:a", config.codec];
 
           if (config.supportsBitrate) {
@@ -252,19 +257,19 @@
 
           ffmpegArgs.push(outputFileName);
 
+          updateProgress(20, 'Converting audio...');
           await ffmpegCoreAPI("exec", ffmpegArgs);
-
-          const returnCode = await ffmpegCoreAPI("ret");
-          
-          if (returnCode !== 0) {
-            throw new Error(`FFmpeg failed with return code: ${returnCode}`);
-          }
 
           updateProgress(95, 'Reading output file...');
           const outputData = await ffmpegCoreAPI("FS.readFile", [outputFileName, { encoding: "binary" }]);
           
           updateProgress(98, 'Cleaning up...');
-          await ffmpegCoreAPI("reset");
+          try {
+            await ffmpegCoreAPI("FS.unlink", [inputFileName]);
+            await ffmpegCoreAPI("FS.unlink", [outputFileName]);
+          } catch (cleanupError) {
+            console.warn('Cleanup error (non-fatal):', cleanupError);
+          }
 
           const blob = new Blob([outputData.buffer], { type: config.mimeType });
           const url = URL.createObjectURL(blob);
@@ -279,13 +284,14 @@
             progressContainer.classList.remove('show');
             showNotification('success', '✅ Conversion successful!');
           }, 500);
-          convertBtn.disabled = false;
 
         } catch (error) {
           console.error('Conversion error:', error);
           progressContainer.classList.remove('show');
-          showNotification('error', `❌ Error: ${error.message}`);
+          showNotification('error', `❌ Error: ${error.message || 'Conversion failed'}`);
+        } finally {
           convertBtn.disabled = false;
+          isConverting = false;
         }
       });
 
