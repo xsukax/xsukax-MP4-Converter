@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <title>xsukax Audio Converter</title>
+    <script src="ffmpegWasmBarebones.js"></script>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; background: #f5f5f5; padding: 20px; min-height: 100vh; }
+      .container { max-width: 800px; margin: 30px auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+      h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
+      .subtitle { color: #666; margin-bottom: 30px; font-size: 14px; }
+      .upload-area { border: 2px dashed #ccc; border-radius: 8px; padding: 40px; text-align: center; margin: 20px 0; cursor: pointer; transition: all 0.3s; }
+      .upload-area:hover { border-color: #2196F3; background: #f9f9f9; }
+      .upload-area.active { border-color: #2196F3; background: #e3f2fd; }
+      .upload-area h3 { color: #555; margin-bottom: 10px; font-size: 18px; font-weight: 500; }
+      .upload-area p { color: #888; font-size: 14px; }
+      input[type="file"] { display: none; }
+      .file-info { margin: 15px 0; color: #666; font-size: 14px; padding: 10px; background: #f9f9f9; border-radius: 5px; display: none; }
+      .file-info.show { display: block; }
+      .options { margin: 20px 0; }
+      .option-group { margin-bottom: 15px; }
+      .option-group label { display: block; margin-bottom: 5px; color: #555; font-weight: 500; font-size: 14px; }
+      .option-group select { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px; background: white; cursor: pointer; }
+      .option-group select:focus { outline: none; border-color: #2196F3; }
+      .bitrate-group { display: none; }
+      .bitrate-group.show { display: block; }
+      button { background: #2196F3; color: white; border: none; padding: 12px 30px; font-size: 16px; border-radius: 5px; cursor: pointer; width: 100%; margin-top: 10px; transition: background 0.3s; }
+      button:hover { background: #1976d2; }
+      button:disabled { background: #ccc; cursor: not-allowed; }
+      .result { margin-top: 20px; display: none; }
+      .result.show { display: block; }
+      .result h3 { color: #2e7d32; margin-bottom: 15px; font-size: 18px; }
+      audio { width: 100%; margin: 15px 0; }
+      .download-btn { background: #4CAF50; display: inline-block; text-decoration: none; color: white; padding: 12px 30px; border-radius: 5px; margin-top: 10px; transition: background 0.3s; }
+      .download-btn:hover { background: #45a049; }
+      .notification { position: fixed; top: 20px; right: 20px; padding: 15px 20px; border-radius: 5px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000; max-width: 350px; animation: slideIn 0.3s ease-out; }
+      .notification.success { background: #4CAF50; color: white; }
+      .notification.error { background: #f44336; color: white; }
+      .notification.info { background: #2196F3; color: white; }
+      @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+      @media (max-width: 600px) { .container { padding: 20px; margin: 10px; } h1 { font-size: 24px; } .upload-area { padding: 30px 20px; } .notification { right: 10px; left: 10px; max-width: none; } }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🎵 xsukax Audio Converter</h1>
+      <p class="subtitle">Convert audio files between formats directly in your browser. All processing happens locally - no uploads required!</p>
+      
+      <div class="upload-area" id="uploadArea">
+        <input type="file" id="fileInput" accept="audio/*">
+        <div>
+          <h3>🎧 Drop audio file here or click to browse</h3>
+          <p>Supports MP3, WAV, FLAC, AAC, OGG, M4A, WMA, OPUS, and more</p>
+        </div>
+      </div>
+      
+      <div class="file-info" id="fileInfo"></div>
+      
+      <div class="options">
+        <div class="option-group">
+          <label for="formatSelect">Target Format:</label>
+          <select id="formatSelect">
+            <option value="mp3">MP3 - MPEG Audio Layer 3</option>
+            <option value="wav">WAV - Waveform Audio (Lossless)</option>
+            <option value="aac">AAC - Advanced Audio Coding</option>
+            <option value="ogg">OGG - Ogg Vorbis</option>
+            <option value="flac">FLAC - Free Lossless Audio Codec</option>
+            <option value="m4a">M4A - MPEG-4 Audio</option>
+            <option value="opus">OPUS - Opus Interactive Audio</option>
+            <option value="wma">WMA - Windows Media Audio</option>
+          </select>
+        </div>
+        
+        <div class="option-group bitrate-group" id="bitrateGroup">
+          <label for="bitrateSelect">Audio Bitrate:</label>
+          <select id="bitrateSelect">
+            <option value="64k">64 kbps (Low Quality)</option>
+            <option value="96k">96 kbps (Medium Low)</option>
+            <option value="128k" selected>128 kbps (Medium)</option>
+            <option value="192k">192 kbps (High)</option>
+            <option value="256k">256 kbps (Very High)</option>
+            <option value="320k">320 kbps (Maximum)</option>
+          </select>
+        </div>
+      </div>
+      
+      <button id="convertBtn" disabled>Convert Audio</button>
+      
+      <div class="result" id="result">
+        <h3>✅ Conversion Complete!</h3>
+        <audio id="preview" controls></audio>
+        <br>
+        <a class="download-btn" id="downloadLink" download="output.mp3">⬇️ Download Audio</a>
+      </div>
+    </div>
+
+    <script>
+      const FFMPEG_CORE_URL = document.location.origin + document.location.pathname + "./ffmpeg-core/ffmpeg-core.js";
+      const FFMPEG_WASM_URL = document.location.origin + document.location.pathname + "./ffmpeg-core/ffmpeg-core.wasm";
+
+      const uploadArea = document.getElementById('uploadArea');
+      const fileInput = document.getElementById('fileInput');
+      const convertBtn = document.getElementById('convertBtn');
+      const result = document.getElementById('result');
+      const fileInfo = document.getElementById('fileInfo');
+      const preview = document.getElementById('preview');
+      const downloadLink = document.getElementById('downloadLink');
+      const formatSelect = document.getElementById('formatSelect');
+      const bitrateGroup = document.getElementById('bitrateGroup');
+      const bitrateSelect = document.getElementById('bitrateSelect');
+
+      let selectedFile = null;
+      let ffmpegCoreAPI = null;
+
+      const formatConfig = {
+        mp3: { codec: 'libmp3lame', supportsBitrate: true, mimeType: 'audio/mpeg' },
+        wav: { codec: 'pcm_s16le', supportsBitrate: false, mimeType: 'audio/wav' },
+        aac: { codec: 'aac', supportsBitrate: true, mimeType: 'audio/aac' },
+        ogg: { codec: 'libvorbis', supportsBitrate: true, mimeType: 'audio/ogg' },
+        flac: { codec: 'flac', supportsBitrate: false, mimeType: 'audio/flac' },
+        m4a: { codec: 'aac', supportsBitrate: true, mimeType: 'audio/mp4' },
+        opus: { codec: 'libopus', supportsBitrate: true, mimeType: 'audio/ogg' },
+        wma: { codec: 'wmav2', supportsBitrate: true, mimeType: 'audio/x-ms-wma' }
+      };
+
+      uploadArea.addEventListener('click', () => fileInput.click());
+      
+      uploadArea.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        uploadArea.classList.add('active');
+      });
+      
+      uploadArea.addEventListener('dragleave', () => {
+        uploadArea.classList.remove('active');
+      });
+      
+      uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('active');
+        const files = e.dataTransfer.files;
+        if (files.length > 0 && files[0].type.startsWith('audio/')) {
+          fileInput.files = files;
+          handleFileSelect(files[0]);
+        } else {
+          showNotification('error', 'Please drop a valid audio file');
+        }
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        if (e.target.files.length > 0) {
+          handleFileSelect(e.target.files[0]);
+        }
+      });
+
+      formatSelect.addEventListener('change', () => {
+        updateBitrateVisibility();
+      });
+
+      function handleFileSelect(file) {
+        selectedFile = file;
+        fileInfo.textContent = `Selected: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)`;
+        fileInfo.classList.add('show');
+        convertBtn.disabled = false;
+        result.classList.remove('show');
+      }
+
+      function updateBitrateVisibility() {
+        const format = formatSelect.value;
+        const config = formatConfig[format];
+        if (config && config.supportsBitrate) {
+          bitrateGroup.classList.add('show');
+        } else {
+          bitrateGroup.classList.remove('show');
+        }
+      }
+
+      convertBtn.addEventListener('click', async () => {
+        if (!selectedFile) return;
+
+        convertBtn.disabled = true;
+        result.classList.remove('show');
+        showNotification('info', 'Starting conversion...');
+
+        try {
+          const fileArray = await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(new Uint8Array(reader.result));
+            reader.readAsArrayBuffer(selectedFile);
+          });
+
+          if (!ffmpegCoreAPI) {
+            showNotification('info', 'Loading FFmpeg (first time only)...');
+            ffmpegCoreAPI = await loadFFmpegCoreAPI({
+              coreURL: FFMPEG_CORE_URL,
+              wasmURL: FFMPEG_WASM_URL,
+              onLog: (l) => {
+                console.log(`[${l.type}]: ${l.message}`);
+              },
+              onProgress: (p) => {
+                const percent = Math.round(p.progress * 100);
+                showNotification('info', `Converting... ${percent}%`);
+              },
+            });
+          }
+
+          const inputExt = selectedFile.name.split('.').pop() || 'audio';
+          const inputFileName = `input.${inputExt}`;
+          const targetFormat = formatSelect.value;
+          const outputFileName = `output.${targetFormat}`;
+          const config = formatConfig[targetFormat];
+
+          await ffmpegCoreAPI("FS.writeFile", [inputFileName, fileArray], [fileArray.buffer]);
+          await ffmpegCoreAPI("setTimeout", [-1]);
+
+          const ffmpegArgs = ["-i", inputFileName, "-c:a", config.codec];
+
+          if (config.supportsBitrate) {
+            ffmpegArgs.push("-b:a", bitrateSelect.value);
+          }
+
+          if (targetFormat === 'm4a') {
+            ffmpegArgs.push("-f", "mp4");
+          }
+
+          ffmpegArgs.push(outputFileName);
+
+          await ffmpegCoreAPI("exec", ffmpegArgs);
+
+          const returnCode = await ffmpegCoreAPI("ret");
+          
+          if (returnCode !== 0) {
+            throw new Error(`FFmpeg failed with return code: ${returnCode}`);
+          }
+
+          const outputData = await ffmpegCoreAPI("FS.readFile", [outputFileName, { encoding: "binary" }]);
+          await ffmpegCoreAPI("reset");
+
+          const blob = new Blob([outputData.buffer], { type: config.mimeType });
+          const url = URL.createObjectURL(blob);
+
+          preview.src = url;
+          downloadLink.href = url;
+          downloadLink.download = selectedFile.name.replace(/\.[^.]+$/, `.${targetFormat}`);
+
+          result.classList.add('show');
+          showNotification('success', '✅ Conversion successful!');
+          convertBtn.disabled = false;
+
+        } catch (error) {
+          console.error('Conversion error:', error);
+          showNotification('error', `❌ Error: ${error.message}`);
+          convertBtn.disabled = false;
+        }
+      });
+
+      function showNotification(type, message) {
+        const existingNotifications = document.querySelectorAll('.notification');
+        existingNotifications.forEach(n => n.remove());
+
+        const notification = document.createElement('div');
+        notification.className = `notification ${type}`;
+        notification.textContent = message;
+        document.body.appendChild(notification);
+
+        setTimeout(() => {
+          notification.style.animation = 'slideIn 0.3s ease-out reverse';
+          setTimeout(() => notification.remove(), 300);
+        }, 3000);
+      }
+
+      updateBitrateVisibility();
+    </script>
+  </body>
+</html>
